@@ -9,6 +9,28 @@ import google.generativeai as genai
 from split_statements import SplitStatements
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pydantic import BaseModel
+from vertex import Gemini_Vertex
+import random
+
+def retry_request(fn, retries=7):
+    for i in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            wait = (2 ** i) + random.uniform(0, 1)
+            print(f"Error occurred: {e}, retrying in {wait:.2f} seconds... (attempt {i + 1}/{retries})")
+            time.sleep(wait)
+    print("Max retries exceeded.")
+    return None
+
+class Review(BaseModel):
+    statement: str
+    reason: list
+    verdict: int
+
+class Reviews(BaseModel):
+    statements: list[Review]
 
 # Load environment variables from .env file
 load_dotenv()
@@ -17,15 +39,13 @@ class NoisesensitivyTest(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        api_key = os.getenv('OPENAI_API_KEY')
         File_Data = os.getenv('FILE_DATA', "../../../data/deepseek_685b/output_partial_685B_with.csv")
         File_Output = os.getenv('FILE_OUTPUT', "../../../results/log_noisesensitivy_test_results_685B.csv")
         Model_Name = os.getenv('MODEL_NAME', "deepseek-ai/DeepSeek-R1-0528-tput")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY not found in .env file")
-        
-        cls.evaluator_llm = openai.OpenAI(api_key=api_key)
-        cls.split_statements = SplitStatements()
+        MODEL_ID = os.getenv('MODEL_ID')
+
+        cls.gemini = Gemini_Vertex(MODEL_ID)
+        cls.split_statements = SplitStatements(MODEL_ID)
         cls.Model_Name = Model_Name
         cls.File_Output = File_Output
 
@@ -112,23 +132,12 @@ class NoisesensitivyTest(unittest.TestCase):
                 return []
 
             full_prompt = self.fill_prompt(question, response, contexts)
-            messages = [
-                {"role": "user", "content": full_prompt}
-            ]
-            response = self.evaluator_llm.chat.completions.create(
-                model="gpt-4",
-                messages=messages
-            )
-            if not response.choices or not response.choices[0].message:
-                return []
-            if not response.choices[0].message.content:
+            response = retry_request(lambda: self.gemini.response(full_prompt,Reviews))
+            if not response:
                 return []
             
-            try:
-                response_json = self.split_statements.get_json(response.choices[0].message.content)
-            except json.JSONDecodeError:
-                print(f"Error decoding JSON response: {response.choices[0].message.content}")
-                return response.choices[0].message.content  
+            response_json = json.loads(response)
+  
 
             return response_json["statements"]
         except Exception as e:
