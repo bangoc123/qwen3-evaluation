@@ -21,7 +21,7 @@ def retry_request(fn, retries=7):
 
 class SplitStatement(BaseModel):
     statement: str
-    reason: list
+    
 
 class ResponseSplitStatement(BaseModel):
     statements: list[SplitStatement]
@@ -40,7 +40,7 @@ class SplitStatements():
         prompt = f"""
             You are given a user question, an AI-generated answer.
 
-            Your task has two parts:
+            Your task has one parts:
 
             1. **Decompose the Answer:**
             Break down the answer into a list of standalone factual statements. Each statement must:
@@ -54,7 +54,6 @@ class SplitStatements():
             "statements": [
                 {{
                 "statement": "...",
-                "reason": "...",
                 }},
                 ...
             ]
@@ -64,29 +63,50 @@ class SplitStatements():
             ### Example
 
             **Question:**  
-            Who is Marie Curie and what is she famous for?
+            What are the key features of the display on the TCL 40 NXTPAPER 8GB/256GB mobile phone?
 
             **Answer:**  
-            She was a physicist and chemist who won two Nobel Prizes. She discovered radium and polonium. She also taught at Sorbonne University in Paris.
+            Based on the provided information, the display of the "TCL 40 NXTPaper 8GB/256GB" phone stands out with the following features:
 
+                90Hz refresh rate
+
+                Resolution of 2460x1080 pixels
+
+                50MP main camera with f/1.8 aperture, 5MP ultra-wide camera with f/2.2 aperture, 2MP macro camera with f/2.4 aperture
+
+                256GB of storage, 8GB of RAM.
+                These detailed specifications are taken from the first product listing.
 
             **Output:**
             {{
             "statements": [
                 {{
-                "statement": "Marie Curie was a physicist and chemist who won two Nobel Prizes.",
-                "reason": "The context confirms that Marie Curie was a physicist and chemist and that she won two Nobel Prizes in Physics and Chemistry.",
+                "statement": "The display of the TCL 40 NXTPaper 8GB/256GB phone has a 90Hz refresh rate."
                 }},
                 {{
-                "statement": "Marie Curie discovered radium and polonium.",
-                "reason": "The context clearly states that she discovered the radioactive elements radium and polonium.",
+                "statement": "The display of the TCL 40 NXTPaper 8GB/256GB phone has a resolution of 2460x1080 pixels."
                 }},
                 {{
-                "statement": "Marie Curie taught at Sorbonne University in Paris.",
-                "reason": "The context does not mention anything about Marie Curie teaching at the Sorbonne or any other university.",
+                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 50MP main camera with an f/1.8 aperture."
+                }},
+                {{
+                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 5MP ultra-wide camera with an f/2.2 aperture."
+                }},
+                {{
+                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 2MP macro camera with an f/2.4 aperture."
+                }},
+                {{
+                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has 256GB of internal storage."
+                }},
+                {{
+                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has 8GB of RAM."
+                }},
+                {{
+                "statement": "These specifications are taken from the first product listing."
                 }}
             ]
             }}
+
 
             ---
 

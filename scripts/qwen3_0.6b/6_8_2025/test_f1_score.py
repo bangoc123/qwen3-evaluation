@@ -59,13 +59,13 @@ class F1Test(unittest.TestCase):
         except FileNotFoundError:
             raise unittest.SkipTest(f"{File_Data} not found")
     
-    def fill_prompt(self, question: str, response_llm: list[str], ground_truth: list) -> str:
+    def fill_prompt(self, question: str, response_llm: list[str], ground_truth: str) -> str:
         """Fill the prompt template"""
         GROUNDING_AUTORATER_PROMPT = """
-                    You are given a user question, the list AI-generated statements of answer, and the list statements of ground_truth.
+                    You are given a user question, the list AI-generated statements of answer, and ground_truth.
 
                     1. **Evaluate accuracy:**
-                    For each extracted AI-generated statements of answer, determine whether it is supported by the list statements of ground_truth:
+                    For each extracted AI-generated statements of answer, determine whether it is supported by ground_truth:
                     - Assign `"verdict": 1` if the statement can be directly inferred from the ground_truth.
                     - Assign `"verdict": 0` if the statement cannot be directly inferred.
                     - Provide a short `"reason"` for each verdict.
@@ -92,7 +92,7 @@ class F1Test(unittest.TestCase):
                     ["Marie Curie was a physicist and chemist who won two Nobel Prizes.",  "Marie Curie discovered radium and polonium.", "Marie Curie taught at Sorbonne University in Paris."]
 
                     **Ground Truth:**  
-                    ["Marie Curie was a pioneering physicist and chemist who won two Nobel Prizes", "She discovered radium and polonium", "She conducted research on radioactivity"]
+                    Marie Curie was a pioneering physicist and chemist who conducted research on radioactivity. She was awarded two Nobel Prizes: one in Physics and one in Chemistry. She is known for discovering the radioactive elements radium and polonium.
 
                     **Output:**
                     {{
@@ -126,7 +126,7 @@ class F1Test(unittest.TestCase):
                     """
         return GROUNDING_AUTORATER_PROMPT.format(question= question, response_llm=response_llm, ground_truth=ground_truth)
 
-    def label_statements(self, question: str, response_llm: list[str], ground_truth: list) -> list:
+    def label_statements(self, question: str, response_llm: list[str], ground_truth: str) -> list:
         """label statements based on the context"""
         try:
             if not question or not response_llm or not ground_truth:
@@ -146,32 +146,57 @@ class F1Test(unittest.TestCase):
             print(f"Error calculating f1 score: {e}")
             return []
 
-    def calculate_score(self, question: str, response_llm: list[str], ground_truth: list) -> tuple[list, float, float, float]:
-        """f1 score calculation"""
+    def calculate_precision_score(self, question: str, response_llm: list[str], ground_truth: str) -> tuple[list, float]:
+        """precision score calculation"""
         try:
             if not question or not response_llm or not ground_truth:
-                return [], 0.0, 0.0, 0.0
+                return [], 0.0
 
             # Get labeled statements
             labeled_statements = self.label_statements(question, response_llm, ground_truth)
             if not labeled_statements:
-                return [], 0.0, 0.0, 0.0
+                return [], 0.0
 
-            # Calculate f1 score
+            # Calculate precision score
             total_statements = len(labeled_statements)
             if total_statements == 0:
-                return [], 0.0, 0.0, 0.0
+                return [], 0.0
             
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 1)
             precision = correct_statements / len(response_llm) if len(response_llm) > 0 else 0.0
-            recall = correct_statements / len(ground_truth) if len(ground_truth) > 0 else 0.0
-            f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
 
-            return labeled_statements,round(precision, 2), round(recall, 2), round(f1_score, 2)
+            return labeled_statements,round(precision, 2)
         except Exception as e:
-            print(f"Error calculating f1 score: {e}")
-            return [], 0.0, 0.0, 0.0
-        
+            print(f"Error calculating precision score: {e}")
+            return [], 0.0
+
+    def calculate_recall_score(self, question: str, response_llm: str, ground_truth: list[str]) -> tuple[list, float]:
+        """recall score calculation"""
+        try:
+            if not question or not response_llm or not ground_truth:
+                return [], 0.0
+
+            # Get labeled statements
+            labeled_statements = self.label_statements(question, response_llm = ground_truth, ground_truth= response_llm)
+            if not labeled_statements:
+                return [], 0.0
+
+            # Calculate recall score
+            total_statements = len(labeled_statements)
+            if total_statements == 0:
+                return [], 0.0
+            
+            correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 1)
+            recall = correct_statements / len(ground_truth) if len(ground_truth) > 0 else 0.0
+
+            return labeled_statements,round(recall, 2)
+        except Exception as e:
+            print(f"Error calculating recall score: {e}")
+            return [], 0.0
+
+    def caculate_f1_score(self, precision: float, recall: float) -> float:
+        f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
+        return f1_score
 
     def save_result_to_csv(self, result: dict, filename: str = "log_f1_score_test_results.csv"):
         """Save test result to CSV file"""
@@ -210,7 +235,9 @@ class F1Test(unittest.TestCase):
                     score_start_time = time.time()
                     statements_of_response_llm = self.split_statements.split_statements(query, model_answer)
                     statements_of_ground_truth = self.split_statements.split_statements(query, ground_truth)
-                    labeled_statement,precision, recall, f1_score = self.calculate_score(query, statements_of_response_llm, statements_of_ground_truth)
+                    labeled_statement_of_llm_answer,precision = self.calculate_precision_score(query, statements_of_response_llm, ground_truth)
+                    labeled_statement_of_ground_truth,recall = self.calculate_recall_score(query, model_answer, statements_of_ground_truth)
+                    f1_score = self.caculate_f1_score(precision, recall)
                     score_calc_time = time.time() - score_start_time
 
 
@@ -220,7 +247,8 @@ class F1Test(unittest.TestCase):
                         "query": query,
                         "expected_answer": ground_truth,
                         "model_answer": model_answer,
-                        "label_statements": labeled_statement,
+                        "label_statements_of_llm_answer": labeled_statement_of_llm_answer,
+                        "labeled_statement_of_ground_truth": labeled_statement_of_ground_truth,
                         "precision": round(precision, 2),
                         "recall": round(recall, 2),
                         "f1_score": round(f1_score,2),
