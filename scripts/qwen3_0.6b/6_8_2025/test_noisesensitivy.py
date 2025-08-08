@@ -88,32 +88,46 @@ class NoisesensitivyTest(unittest.TestCase):
                     Who is Marie Curie and what is she famous for?
 
                     **Answer:**  
-                    ["Marie Curie was a physicist and chemist who won two Nobel Prizes.",  "Marie Curie discovered radium and polonium.", "Marie Curie taught at Sorbonne University in Paris."]
+                    ["Marie Curie was a physicist.", "Marie Curie was a chemist.", "Marie Curie won two Nobel Prizes.", "Marie Curie discovered radium.", "Marie Curie discovered polonium.", "Marie Curie taught at Sorbonne University in Paris."]
 
-                    **Context:**  
+                    **Ground Truth:**  
                     Marie Curie was a pioneering physicist and chemist who conducted research on radioactivity. She was awarded two Nobel Prizes: one in Physics and one in Chemistry. She is known for discovering the radioactive elements radium and polonium.
 
                     **Output:**
                     {{
                     "statements": [
                         {{
-                        "statement": "Marie Curie was a physicist and chemist who won two Nobel Prizes.",
-                        "reason": "The context confirms that Marie Curie was a physicist and chemist and that she won two Nobel Prizes in Physics and Chemistry.",
+                        "statement": "Marie Curie was a physicist.",
+                        "reason": "The ground truth confirms that Marie Curie was a physicist.",
                         "verdict": 1
                         }},
                         {{
-                        "statement": "Marie Curie discovered radium and polonium.",
-                        "reason": "The context clearly states that she discovered the radioactive elements radium and polonium.",
+                        "statement": "Marie Curie was a chemist.",
+                        "reason": "The ground truth confirms that Marie Curie was a chemist.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie won two Nobel Prizes.",
+                        "reason": "The ground truth confirms that Marie Curie won two Nobel Prizes in Physics and Chemistry.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie discovered radium.",
+                        "reason": "The ground truth clearly states that she discovered the radioactive elements radium and polonium.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie discovered polonium.",
+                        "reason": "The ground truth clearly states that she discovered the radioactive elements radium and polonium.",
                         "verdict": 1
                         }},
                         {{
                         "statement": "Marie Curie taught at Sorbonne University in Paris.",
-                        "reason": "The context does not mention anything about Marie Curie teaching at the Sorbonne or any other university.",
+                        "reason": "The ground truth does not mention anything about Marie Curie teaching at the Sorbonne or any other university.",
                         "verdict": 0
                         }}
                     ]
                     }}
-
                     ---
 
                     Input:
