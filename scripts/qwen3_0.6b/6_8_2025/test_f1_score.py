@@ -15,7 +15,7 @@ import random
 # Load environment variables from .env file
 load_dotenv()
 
-def retry_request(fn, retries=7):
+def retry_request(fn, retries=5):
     for i in range(retries):
         try:
             return fn()
@@ -276,6 +276,22 @@ class F1Test(unittest.TestCase):
 
                     time.sleep(1)
                 except Exception as e:
+                    result = {
+                        "row_index": index,
+                        "query": query,
+                        "expected_answer": ground_truth,
+                        "model_answer": model_answer,
+                        "label_statements_of_llm_answer": [],
+                        "labeled_statement_of_ground_truth": [],
+                        "precision": 0.0,
+                        "recall": 0.0,
+                        "f1_score": 0.0,
+                        "score_calc_time_seconds": 0.0,
+                        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                    }
+
+                    # # Save result
+                    self.save_result_to_csv(result, self.File_Output)
                     print(f"Row {index}: Error processing query '{query}': {e}")
           
         # Adjust the max_workers based on your rate limit and CPU
@@ -284,4 +300,125 @@ class F1Test(unittest.TestCase):
             for future in as_completed(futures):
                 future.result()  # To raise exceptions if any       
     
-
+    def retry_empty_label_statements(self):
+        """Retry processing rows that have empty label_statements_of_llm_answer or labeled_statement_of_ground_truth"""
+        try:
+            # Check if output file exists
+            if not os.path.exists(self.File_Output):
+                print(f"Output file {self.File_Output} not found")
+                return None
+            
+            # Read the existing CSV file
+            print(f"Reading output CSV file for retry: {self.File_Output}")
+            output_df = pd.read_csv(self.File_Output)
+            
+            # Check required columns
+            required_columns = ['label_statements_of_llm_answer', 'labeled_statement_of_ground_truth', 'row_index']
+            missing_columns = [col for col in required_columns if col not in output_df.columns]
+            if missing_columns:
+                print(f"Missing required columns in output file: {missing_columns}")
+                return None
+            
+            # Find rows with empty label_statements_of_llm_answer or labeled_statement_of_ground_truth
+            # Check for both empty lists and string representation of empty lists
+            empty_rows = output_df[
+                (output_df['label_statements_of_llm_answer'] == '[]') | 
+                (output_df['label_statements_of_llm_answer'].isna()) |
+                (output_df['label_statements_of_llm_answer'] == '') |
+                (output_df['label_statements_of_llm_answer'] == 'nan') |
+                (output_df['labeled_statement_of_ground_truth'] == '[]') | 
+                (output_df['labeled_statement_of_ground_truth'].isna()) |
+                (output_df['labeled_statement_of_ground_truth'] == '') |
+                (output_df['labeled_statement_of_ground_truth'] == 'nan')
+            ]
+            
+            if len(empty_rows) == 0:
+                print("No rows with empty label statements found to retry")
+                return output_df
+            
+            print(f"Found {len(empty_rows)} rows with empty label statements to retry")
+            
+            model_column = f"{self.Model_Name}_answer"
+        
+            def retry_row(output_row):
+                """Retry processing a single row with empty label statements"""
+                row_index = int(output_row['row_index'])
+                
+                # Get original data from self.df using row_index
+                if row_index >= len(self.df):
+                    print(f"Row index {row_index} out of range in original dataframe")
+                    return None, False
+                
+                original_row = self.df.iloc[row_index]
+                
+                query = str(original_row.get('generated_question', '')).strip()
+                model_answer = str(original_row.get(model_column, '')).strip()
+                ground_truth = str(original_row.get('answer', '')).strip()
+                
+                if not query or not ground_truth or not model_answer:
+                    print(f"Row {row_index}: Skipping retry - missing query, ground_truth, or model answer")
+                    return None, False
+                
+                print(f"Row {row_index}: Retrying query: '{query[:50]}...'")
+                
+                try:
+                    # Recalculate f1 score
+                    score_start_time = time.time()
+                    statements_of_response_llm = self.split_statements.split_statements(query, model_answer)
+                    statements_of_ground_truth = self.split_statements.split_statements(query, ground_truth)
+                    labeled_statement_of_llm_answer, precision = self.calculate_precision_score(query, statements_of_response_llm, ground_truth)
+                    labeled_statement_of_ground_truth, recall = self.calculate_recall_score(query, model_answer, statements_of_ground_truth)
+                    f1_score = self.caculate_f1_score(precision, recall)
+                    score_calc_time = time.time() - score_start_time
+                    
+                    # Check if we still get empty statements
+                    still_empty = False
+                    if not labeled_statement_of_llm_answer or labeled_statement_of_llm_answer == []:
+                        print(f"Row {row_index}: Still got empty label_statements_of_llm_answer after retry")
+                        still_empty = True
+                    if not labeled_statement_of_ground_truth or labeled_statement_of_ground_truth == []:
+                        print(f"Row {row_index}: Still got empty labeled_statement_of_ground_truth after retry")
+                        still_empty = True
+                    
+                    if still_empty:
+                        return None, False
+                    
+                    # Update the row in output_df
+                    row_mask = output_df['row_index'] == row_index
+                    output_df.loc[row_mask, 'label_statements_of_llm_answer'] = str(labeled_statement_of_llm_answer)
+                    output_df.loc[row_mask, 'labeled_statement_of_ground_truth'] = str(labeled_statement_of_ground_truth)
+                    output_df.loc[row_mask, 'precision'] = round(precision, 2)
+                    output_df.loc[row_mask, 'recall'] = round(recall, 2)
+                    output_df.loc[row_mask, 'f1_score'] = round(f1_score, 2)
+                    output_df.loc[row_mask, 'score_calc_time_seconds'] = round(score_calc_time, 2)
+                    output_df.loc[row_mask, 'timestamp'] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # Save immediately
+                    output_df.to_csv(self.File_Output, index=False)
+                    
+                    print(f"Row {row_index}: Retry successful, got {len(labeled_statement_of_llm_answer) if labeled_statement_of_llm_answer else 0} LLM statements and {len(labeled_statement_of_ground_truth) if labeled_statement_of_ground_truth else 0} ground truth statements")
+                    
+                    time.sleep(1)
+                    return (labeled_statement_of_llm_answer, labeled_statement_of_ground_truth), True
+                    
+                except Exception as e:
+                    print(f"Row {row_index}: Error during retry: {e}")
+                    return None, False
+            
+            # Process failed rows with ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(retry_row, row): idx for idx, row in empty_rows.iterrows()}
+                for future in as_completed(futures):
+                    future.result()
+            
+            # Final save
+            output_df.to_csv(self.File_Output, index=False)
+            
+            print(f"\nRetry completed!")
+            print(f"Updated file saved to: {self.File_Output}")
+            
+            return output_df
+            
+        except Exception as e:
+            print(f"Error retrying empty label statements: {str(e)}")
+            return None

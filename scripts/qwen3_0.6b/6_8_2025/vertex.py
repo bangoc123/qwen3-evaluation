@@ -1,9 +1,9 @@
 from google import genai
 import os
 
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../../coursemind-ai-7ab33cfdfd24.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "../../../protonx-evaluation-9422d0b1a9f6.json"
 
-PROJECT_ID = "coursemind-ai"
+PROJECT_ID = "protonx-evaluation"
 if not PROJECT_ID or PROJECT_ID == "[your-project-id]":
     PROJECT_ID = str(os.environ.get("GOOGLE_CLOUD_PROJECT"))
 

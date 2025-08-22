@@ -252,3 +252,109 @@ class NoisesensitivyTest(unittest.TestCase):
             for future in as_completed(futures):
                 future.result()  # To raise exceptions if any
 
+    def retry_empty_label_statements(self):
+        """Retry processing rows that have empty label_statements"""
+        try:
+            # Check if output file exists
+            if not os.path.exists(self.File_Output):
+                print(f"Output file {self.File_Output} not found")
+                return None
+            
+            # Read the existing CSV file
+            print(f"Reading output CSV file for retry: {self.File_Output}")
+            output_df = pd.read_csv(self.File_Output)
+            
+            # Check required columns
+            required_columns = ['label_statements', 'row_index']
+            missing_columns = [col for col in required_columns if col not in output_df.columns]
+            if missing_columns:
+                print(f"Missing required columns in output file: {missing_columns}")
+                return None
+            
+            # Find rows with empty label_statements
+            # Check for both empty lists and string representation of empty lists
+            empty_rows = output_df[
+                (output_df['label_statements'] == '[]') | 
+                (output_df['label_statements'].isna()) |
+                (output_df['label_statements'] == '') |
+                (output_df['label_statements'] == 'nan')
+            ]
+            
+            if len(empty_rows) == 0:
+                print("No rows with empty label_statements found to retry")
+                return output_df
+            
+            print(f"Found {len(empty_rows)} rows with empty label_statements to retry")
+            
+            model_column = f"{self.Model_Name}_answer"
+         
+            
+            def retry_row(output_row):
+                """Retry processing a single row with empty label_statements"""
+                row_index = int(output_row['row_index'])
+                
+                # Get original data from self.df using row_index
+                if row_index >= len(self.df):
+                    print(f"Row index {row_index} out of range in original dataframe")
+                    return None, False
+                
+                original_row = self.df.iloc[row_index]
+                
+                query = str(original_row.get('generated_question', '')).strip()
+                expected_answer = str(original_row.get('answer', '')).strip()
+                context = [str(original_row.get('reference_str', '')).strip()]
+                model_answer = str(original_row.get(model_column, '')).strip()
+                
+                if not query or not context[0] or not model_answer:
+                    print(f"Row {row_index}: Skipping retry - missing query, context, or model answer")
+                    return None, False
+                
+                print(f"Row {row_index}: Retrying query: '{query[:50]}...'")
+                
+                try:
+                    # Recalculate noisesensitivy score
+                    noisesensitivy_start_time = time.time()
+                    statements_of_response = self.split_statements.split_statements(query, model_answer)
+                    labeled_statement, noisesensitivy_score = self.calculate_noisesensitivy_score(query, statements_of_response, context)
+                    noisesensitivy_calc_time = time.time() - noisesensitivy_start_time
+                    
+                    # Check if we still get empty statements
+                    if not labeled_statement or labeled_statement == []:
+                        print(f"Row {row_index}: Still got empty label_statements after retry")
+                        return None, False
+                    
+                    # Update the row in output_df
+                    row_mask = output_df['row_index'] == row_index
+                    output_df.loc[row_mask, 'label_statements'] = str(labeled_statement)
+                    output_df.loc[row_mask, 'noisesensitivy_score'] = round(noisesensitivy_score, 2)
+                    output_df.loc[row_mask, 'noisesensitivy_calc_time_seconds'] = round(noisesensitivy_calc_time, 2)
+                    output_df.loc[row_mask, 'timestamp'] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # Save immediately
+                    output_df.to_csv(self.File_Output, index=False)
+                    
+                    print(f"Row {row_index}: Retry successful, got {len(labeled_statement) if labeled_statement else 0} statements")
+                    
+                    time.sleep(1)
+                    return labeled_statement, True
+                    
+                except Exception as e:
+                    print(f"Row {row_index}: Error during retry: {e}")
+                    return None, False
+            
+            # Process failed rows with ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(retry_row, row): idx for idx, row in empty_rows.iterrows()}
+                for future in as_completed(futures):
+                    future.result()
+            # Final save
+            output_df.to_csv(self.File_Output, index=False)
+            
+            print(f"\nRetry completed!")
+            print(f"Updated file saved to: {self.File_Output}")
+            
+            return output_df
+            
+        except Exception as e:
+            print(f"Error retrying empty label_statements: {str(e)}")
+            return None

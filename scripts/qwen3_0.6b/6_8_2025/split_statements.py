@@ -7,8 +7,9 @@ from vertex import Gemini_Vertex
 load_dotenv()
 import random
 import time 
+from typing import Optional
 
-def retry_request(fn, retries=7):
+def retry_request(fn, retries=5):
     for i in range(retries):
         try:
             return fn()
@@ -36,7 +37,7 @@ class SplitStatements():
         r = statements.rfind('}')
         return json.loads(statements[l:r+1])
         
-    def split_statements(self, question: str, response: str) -> list[str]:
+    def split_statements(self, question: str, response: str) -> Optional[list[str]]:
         prompt = f"""
             You are given a user question, an AI-generated answer.
 
@@ -119,6 +120,8 @@ class SplitStatements():
 
         
         response = retry_request(lambda: self.gemini.response(prompt,ResponseSplitStatement))
+        if(response is None):
+            return None
         state_json = json.loads(response)
         return [s["statement"] for s in state_json["statements"]]
     
