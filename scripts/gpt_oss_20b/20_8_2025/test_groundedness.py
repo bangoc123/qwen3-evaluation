@@ -1,0 +1,367 @@
+import unittest
+import pandas as pd
+import time
+import os
+import asyncio
+from dotenv import load_dotenv
+import openai 
+import google.generativeai as genai
+from split_statements import SplitStatements
+import json
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from pydantic import BaseModel
+from vertex import Gemini_Vertex
+import random
+
+def retry_request(fn, retries=5):
+    for i in range(retries):
+        try:
+            return fn()
+        except Exception as e:
+            wait = (2 ** i) + random.uniform(0, 1)
+            print(f"Error occurred: {e}, retrying in {wait:.2f} seconds... (attempt {i + 1}/{retries})")
+            time.sleep(wait)
+    print("Max retries exceeded.")
+    return None
+
+class Review(BaseModel):
+    sentence: str
+    label: str
+    rationale: str
+    excerpt : list
+
+class Reviews(BaseModel):
+    statements: list[Review]
+
+
+# Load environment variables from .env file
+load_dotenv()
+
+class GroundednessTest(unittest.TestCase):
+    """Test suite for calculating Groundedness scores"""
+
+    @classmethod
+    def setUpClass(cls):
+        """Setup test data and RAGAS Groundedness scorer"""
+
+        File_Data = os.getenv('FILE_DATA', "../../../data/deepseek_685b/output_partial_685B_with.csv")
+        File_Output = os.getenv('FILE_OUTPUT', "../../../results/log_groundedness_test_results_685B.csv")
+        Model_Name = os.getenv('MODEL_NAME', "deepseek-ai/DeepSeek-R1-0528-tput")
+        MODEL_ID = os.getenv('MODEL_ID')
+
+        cls.gemini = Gemini_Vertex(MODEL_ID)
+        cls.split_statements = SplitStatements(MODEL_ID)
+        cls.Model_Name = Model_Name
+        cls.File_Output = File_Output
+
+        # Load CSV data
+        try:
+            current_path = os.path.dirname(__file__)
+            file_path = os.path.join(current_path, File_Data)
+            cls.df = pd.read_csv(file_path)
+            print(f"Loaded {len(cls.df)} test cases from CSV")
+        except FileNotFoundError:
+            raise unittest.SkipTest(f"{File_Data} not found")
+    
+    def fill_prompt(self, response: list[str], context: list) -> str:
+        """Fill the prompt template"""
+        GROUNDING_AUTORATER_PROMPT = """
+                    You are a helpful and harmless AI assistant. You will be provided with a textual
+                    context and the list model-generated statements of response.
+                    Your task is to analyze the list statements of response and classify each
+                    statement according to its relationship with the provided context.
+
+                    **Instructions:**
+                    1. **For each statement, assign one of the following labels:**
+                        * **`supported`**: The statement is entailed by the given context.  Provide a
+                        supporting excerpt from the context. The supporting excerpt must *fully*
+                        entail the statement. If you need to cite multiple supporting excerpts,
+                        simply concatenate them.
+                        * **`unsupported`**: The statement is not entailed by the given context. No
+                        excerpt is needed for this label.
+                        * **`contradictory`**: The statement is falsified by the given context.
+                        Provide a contradicting excerpt from the context.
+                        * **`no_rad`**: The statement does not require factual attribution (e.g.,
+                        opinions, greetings, questions, disclaimers).  No excerpt is needed for
+                        this label.
+                    2. **For each label, provide a short rationale explaining your decision.**
+                    The rationale should be separate from the excerpt.
+                    3. **Be very strict with your `supported` and `contradictory` decisions.**
+                    Unless you can find straightforward, indisputable evidence excerpts *in the
+                    context* that a sentence is `supported` or `contradictory`, consider it
+                    `unsupported`. You should not employ world knowledge unless it is truly
+                    trivial.
+
+                    **Input Format:**
+
+                    The input will consist of two parts, clearly separated:
+
+                    * **Context:**  The textual context used to generate the response.
+                    * **Response:** The list model-generated statements of response.
+
+                    **Output Format:**
+                    Return the result in the following JSON format:
+                    {{
+                    "statements": [
+                        {{
+                        "sentence": "...",
+                        "label": "...",
+                        "rationale": "...",
+                        "excerpt": "..."
+                        }},
+                        ...
+                    ]
+                    }}
+                    For each sentence in the response, output with the following
+                    fields:
+
+                    * `"sentence"`: The sentence being analyzed.
+                    * `"label"`: One of `supported`, `unsupported`, `contradictory`, or `no_rad`.
+                    * `"rationale"`: A brief explanation for the assigned label.
+                    * `"excerpt"`:  A relevant excerpt from the context. Only required for
+                    `supported` and `contradictory` labels.
+
+                    **Example:**
+
+                    **Input:**
+
+                    ```
+                    Context:
+                    Apples are red fruits. Bananas are yellow fruits.
+
+                    Response:
+                    [Apples are red, Bananas are green, Bananas are cheaper than apples,Enjoy your fruit!]
+                    ```
+
+                    **Output:**
+                    {{
+                    "statements":
+                        [
+                        {{"sentence": "Apples are red.", "label": "supported", "rationale": "The context explicitly states that apples are red.", "excerpt": "Apples are red fruits."}}
+                        {{"sentence": "Bananas are green.", "label": "contradictory", "rationale": "The context states that bananas are yellow, not green.", "excerpt": "Bananas are yellow fruits."}}
+                        {{"sentence": "Bananas are cheaper than apples.", "label": "unsupported", "rationale": "The context does not mention the price of bananas or apples.", "excerpt": null}}
+                        {{"sentence": "Enjoy your fruit!", "label": "no_rad", "rationale": "This is a general expression and does not require factual attribution.", "excerpt": null}}
+                        ]
+                    }}
+                    **Now, please analyze the following context and response:**
+
+                    **Context:**
+                    {context}
+
+                    **Response:**
+                    {response}
+                    """
+        return GROUNDING_AUTORATER_PROMPT.format(context=context, response=response)
+
+    def label_statements(self, response: list[str], contexts: list) -> list:
+        """label statements of response based on context"""
+        try:
+            if not response or not contexts:
+                return []
+
+            full_prompt = self.fill_prompt(response, contexts)
+            response = retry_request(lambda: self.gemini.response(full_prompt,Reviews))
+            if response is None or not isinstance(response, str) or response.strip() == "":
+                print("Warning: Empty or invalid response received from Gemini.")
+                return []
+            
+            response_json = json.loads(response)
+
+            return response_json["statements"]
+        except Exception as e:
+            print(f"Error label statements: {e}")
+            return []
+
+    def calculate_groundedness_score(self, response: list[str], contexts: list) -> tuple[list,float]:
+        """calculate Groundedness score"""
+        label_statements = self.label_statements(response, contexts)
+        label_cal_score = [item for item in label_statements if item["label"] != "no_rad"] 
+        if len(label_cal_score) == 0:
+            return [],0.0
+        score = sum(1 for item in label_cal_score if item["label"] == "supported") / len(label_cal_score)
+        return label_statements,score
+
+    def save_result_to_csv(self, result: dict, filename: str = "log_groundedness_test_results.csv"):
+        """Save test result to CSV file"""
+        try:
+            file_exists = os.path.isfile(filename)
+            result_df = pd.DataFrame([result])
+            result_df.to_csv(filename, mode='a', header=not file_exists, index=False)
+        except Exception as e:
+            print(f"Warning: Failed to save result to CSV: {e}")
+
+    def test_groundedness_scores_all_queries(self):
+        """Test all queries from CSV in parallel and calculate Groundedness scores"""
+
+        if os.path.exists(self.File_Output):
+            os.remove(self.File_Output)
+
+        print(f"\nStarting Groundedness score evaluation using RAGAS for {len(self.df)} test cases...")
+        print("=" * 80)
+
+        model_column = f"{self.Model_Name}_answer"
+
+        def process_row(index, row):
+            query = str(row.get('generated_question', '')).strip()
+            expected_answer = str(row.get('answer', '')).strip()
+            context = [str(row.get('reference_str', '')).strip()]
+            model_answer = str(row.get(model_column, '')).strip()
+
+            if not query or not context[0] or not model_answer:
+                print(f"Row {index}: Skipping - missing query, context, or model answer")
+                return
+
+            print(f"Row {index}: Testing query: '{query[:50]}...'")
+
+            try:
+                groundedness_start_time = time.time()
+                statements_response = self.split_statements.split_statements(query, model_answer)
+                label_statement, groundedness_score = self.calculate_groundedness_score(statements_response, context)
+                groundedness_calc_time = time.time() - groundedness_start_time
+
+                result = {
+                    "row_index": index,
+                    "generated_question": query,
+                    "expected_answer": expected_answer,
+                    "context": context,
+                    "model_answer": model_answer,
+                    "label_statements": label_statement,
+                    "groundedness_score": round(groundedness_score, 2),
+                    "groundedness_calc_time_seconds": round(groundedness_calc_time, 2),
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+
+                self.save_result_to_csv(result, self.File_Output)
+
+            except Exception as e:
+                result = {
+                    "row_index": index,
+                    "generated_question": query,
+                    "expected_answer": expected_answer,
+                    "context": context,
+                    "model_answer": model_answer,
+                    "label_statements": [],
+                    "groundedness_score": 0.0,
+                    "groundedness_calc_time_seconds": 0.0,
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S")
+                }
+
+                self.save_result_to_csv(result, self.File_Output)
+                print(f"Row {index}: Error processing query '{query}': {e}")
+                
+        # Adjust the max_workers based on your rate limit and CPU
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [executor.submit(process_row, index, row) for index, row in self.df.iterrows()]
+            for future in as_completed(futures):
+                future.result()  # To raise exceptions if any
+
+    def retry_empty_label_statements(self):
+        """Retry processing rows that have empty label_statements"""
+        try:
+            # Check if output file exists
+            if not os.path.exists(self.File_Output):
+                print(f"Output file {self.File_Output} not found")
+                return None
+            
+            # Read the existing CSV file
+            print(f"Reading output CSV file for retry: {self.File_Output}")
+            output_df = pd.read_csv(self.File_Output)
+            
+            # Check required columns
+            required_columns = ['label_statements', 'row_index']
+            missing_columns = [col for col in required_columns if col not in output_df.columns]
+            if missing_columns:
+                print(f"Missing required columns in output file: {missing_columns}")
+                return None
+            
+            # Find rows with empty label_statements
+            # Check for both empty lists and string representation of empty lists
+            empty_rows = output_df[
+                (output_df['label_statements'] == '[]') | 
+                (output_df['label_statements'].isna()) |
+                (output_df['label_statements'] == '') |
+                (output_df['label_statements'] == 'nan')
+            ]
+            
+            if len(empty_rows) == 0:
+                print("No rows with empty label_statements found to retry")
+                return output_df
+            
+            print(f"Found {len(empty_rows)} rows with empty label_statements to retry")
+            
+            model_column = f"{self.Model_Name}_answer"
+         
+            
+            def retry_row(output_row):
+                """Retry processing a single row with empty label_statements"""
+                row_index = int(output_row['row_index'])
+                
+                # Get original data from self.df using row_index
+                if row_index >= len(self.df):
+                    print(f"Row index {row_index} out of range in original dataframe")
+                    return None, False
+                
+                original_row = self.df.iloc[row_index]
+                
+                query = str(original_row.get('generated_question', '')).strip()
+                expected_answer = str(original_row.get('answer', '')).strip()
+                context = [str(original_row.get('reference_str', '')).strip()]
+                model_answer = str(original_row.get(model_column, '')).strip()
+                
+                if not query or not context[0] or not model_answer:
+                    print(f"Row {row_index}: Skipping retry - missing query, context, or model answer")
+                    return None, False
+                
+                print(f"Row {row_index}: Retrying query: '{query[:50]}...'")
+                
+                try:
+                    # Recalculate groundedness score
+                    groundedness_start_time = time.time()
+                    statements_response = self.split_statements.split_statements(query, model_answer)
+                    label_statement, groundedness_score = self.calculate_groundedness_score(statements_response, context)
+                    groundedness_calc_time = time.time() - groundedness_start_time
+
+                    
+                    # Check if we still get empty statements
+                    if not label_statement or label_statement == []:
+                        print(f"Row {row_index}: Still got empty label_statements after retry")
+                        return None, False
+                    
+                    # Update the row in output_df
+                    row_mask = output_df['row_index'] == row_index
+                    output_df.loc[row_mask, 'label_statements'] = str(label_statement)
+                    output_df.loc[row_mask, 'groundedness_score'] = round(groundedness_score, 2)
+                    output_df.loc[row_mask, 'groundedness_calc_time_seconds'] = round(groundedness_calc_time, 2)
+                    output_df.loc[row_mask, 'timestamp'] = time.strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # Save immediately
+                    output_df.to_csv(self.File_Output, index=False)
+                    
+                    print(f"Row {row_index}: Retry successful, got {len(label_statement) if label_statement else 0} statements")
+                    
+                    time.sleep(1)
+                    return label_statement, True
+                    
+                except Exception as e:
+                    
+                    print(f"Row {row_index}: Error during retry: {e}")
+                    return None, False
+            
+            # Process failed rows with ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                futures = {executor.submit(retry_row, row): idx for idx, row in empty_rows.iterrows()}
+                for future in as_completed(futures):
+                    future.result()
+            # Final save
+            output_df.to_csv(self.File_Output, index=False)
+            
+            print(f"\nRetry completed!")
+            print(f"Updated file saved to: {self.File_Output}")
+            
+            return output_df
+            
+        except Exception as e:
+            print(f"Error retrying empty label_statements: {str(e)}")
+            return None
+    
+
