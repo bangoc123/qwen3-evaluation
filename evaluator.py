@@ -1,6 +1,6 @@
 import json
 from typing import Optional
-from prompts import PROMPT_SPLIT_STATEMENTS, F1_SCORE_LABEL_STATEMENT_PROMPT, GROUNDEDNESS_LABEL_STATEMENT_PROMPT
+from prompts import PROMPT_SPLIT_STATEMENTS, F1_SCORE_LABEL_STATEMENT_PROMPT, GROUNDEDNESS_LABEL_STATEMENT_PROMPT, NOISESENSITIVY_LABEL_STATEMENT_PROMPT
 from models import ResponseSplitStatement, Reviews, ReviewsGroundedness
 from retry import retry_request
 
@@ -97,15 +97,37 @@ class Evaluator():
     
     def _groundedness_cal(self, question:str, response_llm: str, contexts: list) -> Optional[tuple[list,float]]:
         statements_response = self._split_statements(question, response_llm)
-        label_statements = self._label_statements(response, contexts)
+        label_statements = self._label_statements(GROUNDEDNESS_LABEL_STATEMENT_PROMPT, ReviewsGroundedness ,statements_response, contexts)
         label_cal_score = [item for item in label_statements if item["label"] != "no_rad"] 
         if len(label_cal_score) == 0:
             return [],0.0
         score = sum(1 for item in label_cal_score if item["label"] == "supported") / len(label_cal_score)
         return label_statements,score
 
-    def _noisesensitivy(self, question:str, response_llm: str, contexts: list) -> Optional[tuple[list,float]]:
-        pass 
+    def _noisesensitivy_cal(self, question:str, response_llm: str, contexts: list) -> Optional[tuple[list,float]]:
+        try:
+            if not question or not response_llm or not contexts:
+                return [],1.0
+
+            statements_of_response = self._split_statements(question, response_llm)
+            # Get labeled statements
+            labeled_statements = self._label_statements(NOISESENSITIVY_LABEL_STATEMENT_PROMPT, Reviews, question, statements_of_response, contexts)
+            if not labeled_statements:
+                return [],1.0
+
+            # Calculate NoiseSensitivy score
+            total_statements = len(labeled_statements)
+            if total_statements == 0:
+                return [],1.0
+            
+            correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 0)
+            noise_sensitivity_score = correct_statements / total_statements
+
+            return labeled_statements,round(noise_sensitivity_score, 2)
+        except Exception as e:
+            print(f"Error calculating NoiseSensitivy score: {e}")
+            return [],1.0
+        
     
     def eval(self):
         pass

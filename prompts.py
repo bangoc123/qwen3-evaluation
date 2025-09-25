@@ -158,7 +158,7 @@ F1_SCORE_LABEL_STATEMENT_PROMPT = """
                     """
 
 GROUNDEDNESS_LABEL_STATEMENT_PROMPT = """
-                    You are a helpful and harmless AI assistant. You will be provided with a textual
+                    You are a helpful and harmless AI assistant. You will be provided with a question, a textual
                     context and the list model-generated statements of response.
                     Your task is to analyze the list statements of response and classify each
                     statement according to its relationship with the provided context.
@@ -186,8 +186,8 @@ GROUNDEDNESS_LABEL_STATEMENT_PROMPT = """
 
                     **Input Format:**
 
-                    The input will consist of two parts, clearly separated:
-
+                    The input will consist of three parts, clearly separated:
+                    * **Question:** The original user query that the model is supposed to answer, typically related to the given context.,
                     * **Context:**  The textual context used to generate the response.
                     * **Response:** The list model-generated statements of response.
 
@@ -218,11 +218,15 @@ GROUNDEDNESS_LABEL_STATEMENT_PROMPT = """
                     **Input:**
 
                     ```
+                    Question:
+                    What are the colors of apples and bananas?
+                    
+                    Response:
+                    [Apples are red, Bananas are green, Bananas are cheaper than apples,Enjoy your fruit!]
+
                     Context:
                     Apples are red fruits. Bananas are yellow fruits.
 
-                    Response:
-                    [Apples are red, Bananas are green, Bananas are cheaper than apples,Enjoy your fruit!]
                     ```
 
                     **Output:**
@@ -236,10 +240,92 @@ GROUNDEDNESS_LABEL_STATEMENT_PROMPT = """
                         ]
                     }}
                     **Now, please analyze the following context and response:**
-
-                    **Context:**
+                    
+                    **Question:**
                     {}
 
                     **Response:**
                     {}
+
+                    **Context:**
+                    {}
+                    
+                    """
+
+NOISESENSITIVY_LABEL_STATEMENT_PROMPT = """
+                    You are given a user question, the list AI-generated statements of answer, and a reference context.
+
+                    1. **Evaluate Faithfulness:**
+                    For each extracted statement, determine whether it is supported by the context:
+                    - Assign `"verdict": 1` if the statement can be directly inferred from the context.
+                    - Assign `"verdict": 0` if the statement cannot be directly inferred.
+                    - Provide a short `"reason"` for each verdict.
+
+                    Return the result in the following JSON format:
+                    {{
+                    "statements": [
+                        {{
+                        "statement": "...",
+                        "reason": "...",
+                        "verdict": 1 or 0
+                        }},
+                        ...
+                    ]
+                    }}
+                    ---
+
+                    ### ✅ Example
+
+                    **Question:**  
+                    Who is Marie Curie and what is she famous for?
+
+                    **Answer:**  
+                    ["Marie Curie was a physicist.", "Marie Curie was a chemist.", "Marie Curie won two Nobel Prizes.", "Marie Curie discovered radium.", "Marie Curie discovered polonium.", "Marie Curie taught at Sorbonne University in Paris."]
+
+                    **Context:**  
+                    Marie Curie was a pioneering physicist and chemist who conducted research on radioactivity. She was awarded two Nobel Prizes: one in Physics and one in Chemistry. She is known for discovering the radioactive elements radium and polonium.
+
+                    **Output:**
+                    {{
+                    "statements": [
+                        {{
+                        "statement": "Marie Curie was a physicist.",
+                        "reason": "The ground truth confirms that Marie Curie was a physicist.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie was a chemist.",
+                        "reason": "The ground truth confirms that Marie Curie was a chemist.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie won two Nobel Prizes.",
+                        "reason": "The ground truth confirms that Marie Curie won two Nobel Prizes in Physics and Chemistry.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie discovered radium.",
+                        "reason": "The ground truth clearly states that she discovered the radioactive elements radium and polonium.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie discovered polonium.",
+                        "reason": "The ground truth clearly states that she discovered the radioactive elements radium and polonium.",
+                        "verdict": 1
+                        }},
+                        {{
+                        "statement": "Marie Curie taught at Sorbonne University in Paris.",
+                        "reason": "The ground truth does not mention anything about Marie Curie teaching at the Sorbonne or any other university.",
+                        "verdict": 0
+                        }}
+                    ]
+                    }}
+                    ---
+
+                    Input:
+                    Question: {}
+
+                    Answer: {}
+
+                    Context: {}
                     """
