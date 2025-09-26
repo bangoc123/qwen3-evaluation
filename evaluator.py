@@ -13,8 +13,6 @@ from llms import LLMs
 import uuid
 
 
-
-
 class Evaluator():
     def __init__(self, 
                 metrics: list = [PRECISION, RECALL, F1, GROUNDEDNESS, NOISE_SENSITIVITY], 
@@ -58,7 +56,7 @@ class Evaluator():
         except Exception as e:
             print(f"Error when generating label statements: {e}")
             return []
-    
+      
     def _precision_cal(self, question: str, response_llm: str, ground_truth: str) -> Optional[tuple[list, float]]:
         try:
             if not question or not response_llm or not ground_truth:
@@ -77,12 +75,11 @@ class Evaluator():
             
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 1)
             precision = correct_statements / len(statements_of_response_llm) if len(statements_of_response_llm) > 0 else 0.0
-
             return labeled_statements,round(precision, 2)
         except Exception as e:
             print(f"Error calculating precision score: {e}")
             return [], 0.0
-    
+          
     def _recall_cal(self, question: str, response_llm: str, ground_truth: str) -> Optional[tuple[list, float]]:
         try:
             if not question or not response_llm or not ground_truth:
@@ -101,12 +98,11 @@ class Evaluator():
             
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 1)
             recall = correct_statements / len(statements_of_ground_truth) if len(statements_of_ground_truth) > 0 else 0.0
-
             return labeled_statements,round(recall, 2)
         except Exception as e:
             print(f"Error calculating recall score: {e}")
             return [], 0.0
-    
+
     def _f1_score_cal(self, question: str, response_llm: str, ground_truth: str) -> float:
         try:
             _, precision = self._precision_cal(question, response_llm, ground_truth)
@@ -114,7 +110,7 @@ class Evaluator():
             f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
             return f1_score
         except Exception as e:
-            print(f"Error calculating recall score: {e}")
+            print(f"Error calculating f1 score: {e}")
             return 0.0
     
     def _groundedness_cal(self, question:str, response_llm: str, context: list) -> Optional[tuple[list,float]]:
@@ -127,7 +123,7 @@ class Evaluator():
             score = sum(1 for item in label_cal_score if item["label"] == "supported") / len(label_cal_score)
             return label_statements,score
         except Exception as e:
-            print(f"Error calculating recall score: {e}")
+            print(f"Error calculating groundedness score: {e}")
             return [], 0.0
 
     def _noise_sensitivity_cal(self, question:str, response_llm: str, context: list) -> Optional[tuple[list,float]]:
@@ -148,13 +144,10 @@ class Evaluator():
              
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 0)
             noise_sensitivity_score = correct_statements / total_statements
-
             return labeled_statements,round(noise_sensitivity_score, 2)
         except Exception as e:
             print(f"Error calculating NoiseSensitivy score: {e}")
             return [], 1.0
-        
-    
     def eval(self,
             questions: list = None, 
             response_llms: list = None,

@@ -24,4 +24,4 @@ class ReviewGroundedness(BaseModel):
     excerpt : list
 
 class ReviewsGroundedness(BaseModel):
-    statements: list[Review]
+    statements: list[ReviewGroundedness]
