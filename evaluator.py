@@ -33,7 +33,12 @@ class Evaluator():
             response = retry_request(lambda: self.llm.response(prompt,ResponseSplitStatement))
             if(response is None):
                 return None
-            state_json = json.loads(response)
+            try:
+                state_json = json.loads(response)
+            except Exception as e:
+                print(f"Error when parse json: {e}")
+                return None
+                
             return [s["statement"] for s in state_json["statements"]]
         except:
             return None 
@@ -49,7 +54,11 @@ class Evaluator():
                 print(f"Warning: Empty or invalid response received from {self.model_name}.")
                 return []
 
-            response_json = json.loads(response)
+            try:
+                response_json = json.loads(response)
+            except Exception as e:
+                print(f"Error when parse json: {e}")
+                return None
 
             return response_json["statements"]
         except Exception as e:
