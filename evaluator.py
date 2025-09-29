@@ -1,5 +1,5 @@
 import json
-from typing import Optional
+from typing import Optional, List, Dict
 from prompts import (
     PROMPT_SPLIT_STATEMENTS, 
     F1_SCORE_LABEL_STATEMENT_PROMPT, 
@@ -24,7 +24,6 @@ class Evaluator():
         self.model_name = model_name
         self.model_version = model_version
         self.llm = LLMs(type=model_type, model_name=model_name, model_version=model_version)
-
 
     def _split_statements(self, question: str, response: str) -> Optional[list[str]]:
         try:
@@ -63,14 +62,18 @@ class Evaluator():
                 return [], 0.0
 
             statements_of_response_llm = self._split_statements(question, response_llm)
+            print(f"DEBUG: precision statements_of_response_llm: {statements_of_response_llm}")
             # Get labeled statements
             labeled_statements = self._label_statements(F1_SCORE_LABEL_STATEMENT_PROMPT, Reviews, question, statements_of_response_llm, ground_truth)
+            print(f"DEBUG: precision labeled_statements: {labeled_statements}")
             if not labeled_statements:
+                print(f"DEBUG: precision not have labeled_statements")
                 return [], 0.0
 
             # Calculate precision score
             total_statements = len(labeled_statements)
             if total_statements == 0:
+                print(f"DEBUG: precision not have total_statements")
                 return [], 0.0
             
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 1)
@@ -79,21 +82,25 @@ class Evaluator():
         except Exception as e:
             print(f"Error calculating precision score: {e}")
             return [], 0.0
-          
+        
     def _recall_cal(self, question: str, response_llm: str, ground_truth: str) -> Optional[tuple[list, float]]:
         try:
             if not question or not response_llm or not ground_truth:
                 return [], 0.0
 
             statements_of_ground_truth = self._split_statements(question, ground_truth)
+            print(f"DEBUG: recall: {statements_of_ground_truth}")
             # Get labeled statements
             labeled_statements = self._label_statements(F1_SCORE_LABEL_STATEMENT_PROMPT, Reviews, question,statements_of_ground_truth,response_llm)
+            print(f"DEBUG: recall: labeled_statements {labeled_statements}")
             if not labeled_statements:
+                print(f"DEBUG: recall: not labeled_statements")
                 return [], 0.0
 
             # Calculate recall score
             total_statements = len(labeled_statements)
             if total_statements == 0:
+                print(f"DEBUG: recall: total_st = 0")
                 return [], 0.0
             
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 1)
@@ -119,6 +126,7 @@ class Evaluator():
             label_statements = self._label_statements(GROUNDEDNESS_LABEL_STATEMENT_PROMPT, ReviewsGroundedness, question ,statements_response, context)
             label_cal_score = [item for item in label_statements if item["label"] != "no_rad"] 
             if len(label_cal_score) == 0:
+                print(f"DEBUG: len(label_cal_score)==0:")
                 return [],0.0
             score = sum(1 for item in label_cal_score if item["label"] == "supported") / len(label_cal_score)
             return label_statements,score
@@ -129,17 +137,22 @@ class Evaluator():
     def _noise_sensitivity_cal(self, question:str, response_llm: str, context: list) -> Optional[tuple[list,float]]:
         try:
             if not question or not response_llm or not context:
+                print(f"DEBUG: noise not question or response or context")
                 return [], 1.0
 
             statements_of_response = self._split_statements(question, response_llm)
+            print(f"DEBUG: noise {statements_of_response}")
             # Get labeled statements
             labeled_statements = self._label_statements(NOISESENSITIVY_LABEL_STATEMENT_PROMPT, Reviews, question, statements_of_response, context)
+            print(f"DEBUG: noise {labeled_statements}")
             if not labeled_statements:
+                print(f"DEBUG: noise not have labeled_statements")
                 return [], 1.0
 
             # Calculate NoiseSensitivy score
             total_statements = len(labeled_statements)
             if total_statements == 0:
+                print(f"DEBUG: noise not have total_statements")
                 return [], 1.0
              
             correct_statements = sum(1 for stmt in labeled_statements if stmt.get("verdict") == 0)

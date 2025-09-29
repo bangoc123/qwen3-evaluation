@@ -1,90 +1,91 @@
-PROMPT_SPLIT_STATEMENTS= """
-            You are given a user question, an AI-generated answer.
+PROMPT_SPLIT_STATEMENTS = """
+You are given a user question and an AI-generated answer.
 
-            Your task has one parts:
+### Task
+Decompose the answer into a list of **standalone factual statements**.
 
-            1. **Decompose the Answer:**
-            Break down the answer into a list of standalone factual statements. Each statement must:
-            - Not use any pronouns (e.g., "he", "she", "it", "they").
-            - Be a complete and understandable sentence that conveys one atomic idea.
-            - Provide a short `"reason"` for each statement.
-            - The language of the statement must be in the same language as the question.
+### Rules
+- Do not use pronouns (e.g., "he", "she", "it", "they").
+- Each statement must be a complete and understandable sentence that conveys **one atomic factual idea**.
+- Treat a statement as **atomic** when it describes properties that belong to the same entity at the same time (example: "The main camera has 50MP resolution and an f/1.8 aperture." → keep as one statement).
+- If a statement expresses **alternatives, options, or multiple versions** (example: "The phone has 50MP main camera with f/1.8 aperture, 5MP ultra-wide camera with f/2.2 aperture."), split into separate statements (→ "The phone has 50MP main camera with f/1.8 aperture." and "The phone has 5MP ultra-wide camera with f/2.2 aperture.").
+- Do not merge distinct entities or features into a single statement.
+- Provide a short `"reason"` for each statement that explains why it is one atomic idea.
 
-            Return the result in the following JSON format:
-            {{
-            "statements": [
-                {{
-                "statement": "...",
-                }},
-                ...
-            ]
-            }}
-            ---
+### Output format
+Return the result in the following JSON format:
+{{
+  "statements": [
+    {{
+      "statement": "...",
+      "reason": "..."
+    }},
+    ...
+  ]
+}}
 
-            ### Example
+### Example
 
-            **Question:**  
-            What are the key features of the display on the TCL 40 NXTPAPER 8GB/256GB mobile phone?
+**Question:**  
+What are the key features of the display on the TCL 40 NXTPAPER 8GB/256GB mobile phone?
 
-            **Answer:**  
-            Based on the provided information, the display of the "TCL 40 NXTPaper 8GB/256GB" phone stands out with the following features:
+**Answer:**  
+the display of the "TCL 40 NXTPaper 8GB/256GB" phone stands out with the following features:
 
-                90Hz refresh rate
+90Hz refresh rate  
+Resolution of 2460x1080 pixels  
+50MP main camera with f/1.8 aperture, 5MP ultra-wide camera with f/2.2 aperture, 2MP macro camera with f/2.4 aperture  
+256GB of storage, 8GB of RAM.  
+These detailed specifications are taken from the first product listing.
 
-                Resolution of 2460x1080 pixels
+**Output:**
+{{
+  "statements": [
+    {{
+      "statement": "The display of the TCL 40 NXTPaper 8GB/256GB phone has a 90Hz refresh rate.",
+      "reason": "This is a single specification about the display refresh rate."
+    }},
+    {{
+      "statement": "The display of the TCL 40 NXTPaper 8GB/256GB phone has a resolution of 2460x1080 pixels.",
+      "reason": "This is a single specification about the display resolution."
+    }},
+    {{
+      "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 50MP main camera with an f/1.8 aperture.",
+      "reason": "This combines resolution and aperture which describe the same entity (main camera)."
+    }},
+    {{
+      "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 5MP ultra-wide camera with an f/2.2 aperture.",
+      "reason": "This combines resolution and aperture which describe the same entity (ultra-wide camera)."
+    }},
+    {{
+      "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 2MP macro camera with an f/2.4 aperture.",
+      "reason": "This combines resolution and aperture which describe the same entity (macro camera)."
+    }},
+    {{
+      "statement": "The TCL 40 NXTPaper 8GB/256GB phone has 256GB of internal storage.",
+      "reason": "This is a single specification about storage capacity."
+    }},
+    {{
+      "statement": "The TCL 40 NXTPaper 8GB/256GB phone has 8GB of RAM.",
+      "reason": "This is a single specification about RAM."
+    }}
+  ]
+}}
 
-                50MP main camera with f/1.8 aperture, 5MP ultra-wide camera with f/2.2 aperture, 2MP macro camera with f/2.4 aperture
+---
 
-                256GB of storage, 8GB of RAM.
-                These detailed specifications are taken from the first product listing.
-
-            **Output:**
-            {{
-            "statements": [
-                {{
-                "statement": "The display of the TCL 40 NXTPaper 8GB/256GB phone has a 90Hz refresh rate."
-                }},
-                {{
-                "statement": "The display of the TCL 40 NXTPaper 8GB/256GB phone has a resolution of 2460x1080 pixels."
-                }},
-                {{
-                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 50MP main camera with an f/1.8 aperture."
-                }},
-                {{
-                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 5MP ultra-wide camera with an f/2.2 aperture."
-                }},
-                {{
-                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has a 2MP macro camera with an f/2.4 aperture."
-                }},
-                {{
-                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has 256GB of internal storage."
-                }},
-                {{
-                "statement": "The TCL 40 NXTPaper 8GB/256GB phone has 8GB of RAM."
-                }},
-                {{
-                "statement": "These specifications are taken from the first product listing."
-                }}
-            ]
-            }}
-
-
-            ---
-
-            Input:
-            Question: {}
-
-            Answer: {}
-
-            """
+Input:
+Question: {}
+Answer: {}
+"""
 
 F1_SCORE_LABEL_STATEMENT_PROMPT = """
                     You are given a user question, the list AI-generated statements of answer, and ground_truth.
 
                     1. **Evaluate accuracy:**
                     For each extracted AI-generated statements of answer, determine whether it is supported by ground_truth:
-                    - Assign `"verdict": 1` if the statement can be directly inferred from the ground_truth.
-                    - Assign `"verdict": 0` if the statement cannot be directly inferred.
+                    - Assign `"verdict": 1` if the statement can be inferred from the ground_truth.
+                    - Assign `"verdict": 0` if the statement cannot be inferred.
                     - Provide a short `"reason"` for each verdict.
 
                     Return the result in the following JSON format:
