@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from typing import List, Optional, Union, Callable, Any
 
 class SplitStatement(BaseModel):
     statement: str
@@ -25,3 +26,13 @@ class ReviewGroundedness(BaseModel):
 
 class ReviewsGroundedness(BaseModel):
     statements: list[ReviewGroundedness]
+
+class EvalRequest(BaseModel):
+    metrics: list[str]
+    questions: list[str] = None
+    response_llms: list[str] = None 
+    ground_truths: list[str] = None
+    contexts: list[str] = None
+
+class EvalResponse(BaseModel):
+    results: list[dict]
