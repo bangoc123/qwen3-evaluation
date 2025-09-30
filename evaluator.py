@@ -119,12 +119,10 @@ class Evaluator():
             print(f"Error calculating recall score: {e}")
             return [], 0.0
 
-    def _f1_score_cal(self, question: str, response_llm: str, ground_truth: str) -> float:
+    def _f1_score_cal(self, precision, recall) -> float:
         try:
-            _, precision = self._precision_cal(question, response_llm, ground_truth)
-            _, recall = self._recall_cal(question, response_llm, ground_truth)
             f1_score = (2 * precision * recall) / (precision + recall) if (precision + recall) > 0 else 0.0
-            return f1_score
+            return round(f1_score, 2)
         except Exception as e:
             print(f"Error calculating f1 score: {e}")
             return 0.0
@@ -229,17 +227,27 @@ class Evaluator():
                 result['ground_truth'] = ground_truth
                 result['context'] = context
 
+                precision_value = None
+                recall_value = None
+
                 for metric in self.metrics:
                     if metric == PRECISION:
-                        _, precision = self._precision_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
-                        result[metric] = precision
+                        _, precision_value = self._precision_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
+                        result[metric] = precision_value
 
                     elif metric == RECALL:
-                        _, recall = self._recall_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
-                        result[metric] = recall
+                        _, recall_value = self._recall_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
+                        result[metric] = recall_value
                     
                     elif metric == F1:
-                        f1_score = self._f1_score_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
+                        if precision_value is None:
+                             _, precision_value = self._precision_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
+                             result[metric] = precision_value
+                        if recall_value is None:
+                            _, recall_value = self._recall_cal(question=question, response_llm=response_llm, ground_truth=ground_truth)
+                            result[metric] = recall_value
+
+                        f1_score = self._f1_score_cal(precision=precision_value, recall=recall_value)
                         result[metric] = f1_score
                     
                     elif metric == GROUNDEDNESS:

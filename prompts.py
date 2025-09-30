@@ -11,6 +11,7 @@ Decompose the answer into a list of **standalone factual statements**.
 - If a statement expresses **alternatives, options, or multiple versions** (example: "The phone has 50MP main camera with f/1.8 aperture, 5MP ultra-wide camera with f/2.2 aperture."), split into separate statements (→ "The phone has 50MP main camera with f/1.8 aperture." and "The phone has 5MP ultra-wide camera with f/2.2 aperture.").
 - Do not merge distinct entities or features into a single statement.
 - Provide a short `"reason"` for each statement that explains why it is one atomic idea.
+- The language of the statement must be in the same language as the question.
 
 ### Output format
 Return the result in the following JSON format:
