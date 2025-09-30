@@ -52,9 +52,9 @@ class TestEvaluatorIntegration(unittest.TestCase):
         )
 
     def test_eval_precision_recall_f1(self):
-        question = "Samsung Galaxy A05s có bộ nhớ RAM là bao nhiêu?"
-        response_llm = "RAM của Samsung Galaxy A05s là 4GB hoặc 6GB tùy phiên bản."
-        ground_truth = "Samsung Galaxy A05s có bộ nhớ RAM là 4GB."
+        question = "Điện thoại di động Mobell M539 4G có những màu nào?"
+        response_llm = "Dưới đây là danh sách màu sắc cho các sản phẩm điện thoại di động Mobell: - Mobell M539 4G: vàng - Mobell M139 4G: đỏ, đen, xanh - Mobell F309 4G: vàng, đen, đỏ, xanh Các sản phẩm này đều chính hãng và có thể giảm giá tối đa 500,000 ₫ khi mở thẻ tín dụng TPBank EVO."
+        ground_truth = "Điện thoại di động Mobell M539 4G có màu Gold và Red."
 
 
         self.evaluator = Evaluator(
@@ -67,16 +67,15 @@ class TestEvaluatorIntegration(unittest.TestCase):
             questions=[question],
             response_llms=[response_llm],
             ground_truths=[ground_truth],
-            contexts=[ground_truth]
         )
 
         result = results[0]
         self.assertIn("precision", result)
         self.assertIn("recall", result)
         self.assertIn("f1", result)
-        self.assertEqual(result["precision"], 0.5)
-        self.assertEqual(result["recall"], 1.0)
-        self.assertEqual(result["f1"], 1.0)
+        self.assertEqual(result["precision"], 0.2)
+        self.assertEqual(result["recall"], 0.5)
+        self.assertEqual(result["f1"], 0.29)
 
     def test_eval_groundedness(self):
         self.evaluator = Evaluator(
@@ -93,7 +92,6 @@ class TestEvaluatorIntegration(unittest.TestCase):
         results = self.evaluator.eval(
             questions=[question],
             response_llms=[response_llm],
-            ground_truths=[context],
             contexts=[context]
         )
 
@@ -114,7 +112,6 @@ class TestEvaluatorIntegration(unittest.TestCase):
         results = self.evaluator.eval(
             questions=[question],
             response_llms=[response_llm],
-            ground_truths=[context],
             contexts=[context]
         )
 
