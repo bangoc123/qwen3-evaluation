@@ -52,9 +52,6 @@ async def eval(request: EvalRequest):
 
         logger.info(f"Evaluation request received with metrics: {metrics}")
 
-        results = evaluator.eval(questions=questions, response_llms=response_llms, ground_truths=ground_truths, contexts=contexts)
-
-
         try: 
             results = await asyncio.wait_for(
                 asyncio.to_thread(
